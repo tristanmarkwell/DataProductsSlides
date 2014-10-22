@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>An AUC Calculator for Decision Trees</title>
+  <meta charset="utf-8">
+  <meta name="description" content="An AUC Calculator for Decision Trees">
+  <meta name="author" content="Tristan Markwell">
+  <meta name="generator" content="slidify" />
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta http-equiv="X-UA-Compatible" content="chrome=1">
+  <link rel="stylesheet" href="libraries/frameworks/io2012/css/default.css" media="all" >
+  <link rel="stylesheet" href="libraries/frameworks/io2012/css/phone.css" 
+    media="only screen and (max-device-width: 480px)" >
+  <link rel="stylesheet" href="libraries/frameworks/io2012/css/slidify.css" >
+  <link rel="stylesheet" href="libraries/highlighters/highlight.js/css/tomorrow.css" />
+  <base target="_blank"> <!-- This amazingness opens all links in a new tab. -->  <link rel=stylesheet href="./assets/css/codefont.css"></link>
+<link rel=stylesheet href="./assets/css/ribbons.css"></link>
+
+  
+  <!-- Grab CDN jQuery, fall back to local if offline -->
+  <script src="http://ajax.aspnetcdn.com/ajax/jQuery/jquery-1.7.min.js"></script>
+  <script>window.jQuery || document.write('<script src="libraries/widgets/quiz/js/jquery.js"><\/script>')</script> 
+  <script data-main="libraries/frameworks/io2012/js/slides" 
+    src="libraries/frameworks/io2012/js/require-1.0.8.min.js">
+  </script>
+  
+  
+
+</head>
+<body style="opacity: 0">
+  <slides class="layout-widescreen">
+    
+    <!-- LOGO SLIDE -->
+        <slide class="title-slide segue nobackground">
+  <hgroup class="auto-fadein">
+    <h1>An AUC Calculator for Decision Trees</h1>
+    <h2></h2>
+    <p>Tristan Markwell<br/></p>
+  </hgroup>
+  <article></article>  
+</slide>
+    
+
+    <!-- SLIDES -->
+    <slide class="" id="slide-1" style="background:;">
+  <hgroup>
+    <h2>Motivation</h2>
+  </hgroup>
+  <article data-timings="">
+    <p>Decision trees for classification problems are very easy to represent and explain, but measuring and explaining their predictive power (especially if there are rare events, so accuracy isn&#39;t menaingful) isn&#39;t very easy.  This app lets users enter the output of a real tree or fiddle with the numbers to see the effect on the ROC curve and the AUC.</p>
+
+<p>The ROC curve is a graph of the model&#39;s sensitivity vs specificity for the set of optimum decision rules (ie no way to increase number of true positives with fewer false negatives included as well).  AUC is simply the area under the ROC curve.</p>
+
+<p>The example in these slides uses a non-reactive version of the Shiny code, applied to the default values in the application.  The application is available online at <a href="https://tristanmarkwell.shinyapps.io/AUCCalculator">https://tristanmarkwell.shinyapps.io/AUCCalculator</a></p>
+
+  </article>
+  <!-- Presenter Notes -->
+</slide>
+
+<slide class="" id="slide-2" style="background:;">
+  <hgroup>
+    <h2>Inputs</h2>
+  </hgroup>
+  <article data-timings="">
+    <p>There are 24 inputs: the number of positive cases, negative cases, and the risk score associated with each of the 8 leaves of the tree.  The cases are constrained to be non-negative integers, and the risk is constrained to be non-negative.  Anything left blank is forced to zero.  Using the default values:</p>
+
+<pre><code class="r">library(ggplot2)
+treeDF &lt;- data.frame(pos = c(0,3,12,8,5,7,5,1),
+                     neg = c(0,6,2,8,3,9,15,7),
+                     risk = c(.1,.2,.8,.3,.55,.5,.2,0))
+treeDF[is.na(treeDF)] &lt;- 0
+</code></pre>
+
+  </article>
+  <!-- Presenter Notes -->
+</slide>
+
+<slide class="codefont" id="slide-3" style="background:;">
+  <hgroup>
+    <h2>ROC Curve</h2>
+  </hgroup>
+  <article data-timings="">
+    <p>In order to properly accumulate the true positive and false positive rates, the values must be sorted by risk so that the highest-risk leaf is chosen first:</p>
+
+<pre><code class="r">risks &lt;- unique(treeDF$risk)
+ROCDF &lt;- data.frame(pos=sapply(risks, function(g) sum(ifelse(g==(treeDF$risk),treeDF$pos,0))),
+                    neg=sapply(risks, function(g) sum(ifelse(g==(treeDF$risk),treeDF$neg,0))),
+                    risk=risks)
+ROCDF &lt;- ROCDF[order(ROCDF$risk, decreasing=TRUE),]
+ROCDF &lt;- rbind(data.frame(pos=0,neg=0,risk=NA),ROCDF)
+ROCDF$TP &lt;- cumsum(ROCDF$pos)/sum(ROCDF$pos)
+ROCDF$FP &lt;- cumsum(ROCDF$neg)/sum(ROCDF$neg)
+ggplot(data=ROCDF, aes(x=FP, y=TP)) + geom_line() + geom_point() + ylab(&#39;Sensitivity&#39;) + xlab(&#39;1 - Specificity&#39;) + ggtitle(&#39;Receiver Operator Characteristic&#39;)
+</code></pre>
+
+<p><img src="assets/fig/unnamed-chunk-2.png" alt="plot of chunk unnamed-chunk-2"> </p>
+
+  </article>
+  <!-- Presenter Notes -->
+</slide>
+
+<slide class="" id="slide-4" style="background:;">
+  <hgroup>
+    <h2>AUC Calculation</h2>
+  </hgroup>
+  <article data-timings="">
+    <p>Once the ROC is available the AUC becomes a matter of geometry.  Trapezoid area between two points on a line: \((x_{i+1}-x_{i}) \cdot \frac{y_{i+1}+y_{i}}{2}\)</p>
+
+<pre><code class="r">trapHeight &lt;- (ROCDF[2:nrow(ROCDF),&#39;TP&#39;]+ROCDF[1:(nrow(ROCDF)-1),&#39;TP&#39;])/2
+trapWidth &lt;- ROCDF[2:nrow(ROCDF),&#39;FP&#39;]-ROCDF[1:(nrow(ROCDF)-1),&#39;FP&#39;]
+paste0(&#39;AUC: &#39;,round(sum(trapHeight*trapWidth),3))
+</code></pre>
+
+<pre><code>## [1] &quot;AUC: 0.733&quot;
+</code></pre>
+
+  </article>
+  <!-- Presenter Notes -->
+</slide>
+
+    <slide class="backdrop"></slide>
+  </slides>
+  <div class="pagination pagination-small" id='io2012-ptoc' style="display:none;">
+    <ul>
+      <li>
+      <a href="#" target="_self" rel='tooltip' 
+        data-slide=1 title='Motivation'>
+         1
+      </a>
+    </li>
+    <li>
+      <a href="#" target="_self" rel='tooltip' 
+        data-slide=2 title='Inputs'>
+         2
+      </a>
+    </li>
+    <li>
+      <a href="#" target="_self" rel='tooltip' 
+        data-slide=3 title='ROC Curve'>
+         3
+      </a>
+    </li>
+    <li>
+      <a href="#" target="_self" rel='tooltip' 
+        data-slide=4 title='AUC Calculation'>
+         4
+      </a>
+    </li>
+  </ul>
+  </div>  <!--[if IE]>
+    <script 
+      src="http://ajax.googleapis.com/ajax/libs/chrome-frame/1/CFInstall.min.js">  
+    </script>
+    <script>CFInstall.check({mode: 'overlay'});</script>
+  <![endif]-->
+</body>
+  <!-- Load Javascripts for Widgets -->
+  
+  <!-- MathJax: Fall back to local if CDN offline but local image fonts are not supported (saves >100MB) -->
+  <script type="text/x-mathjax-config">
+    MathJax.Hub.Config({
+      tex2jax: {
+        inlineMath: [['$','$'], ['\\(','\\)']],
+        processEscapes: true
+      }
+    });
+  </script>
+  <script type="text/javascript" src="http://cdn.mathjax.org/mathjax/2.0-latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+  <!-- <script src="https://c328740.ssl.cf1.rackcdn.com/mathjax/2.0-latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML">
+  </script> -->
+  <script>window.MathJax || document.write('<script type="text/x-mathjax-config">MathJax.Hub.Config({"HTML-CSS":{imageFont:null}});<\/script><script src="libraries/widgets/mathjax/MathJax.js?config=TeX-AMS-MML_HTMLorMML"><\/script>')
+</script>
+<!-- LOAD HIGHLIGHTER JS FILES -->
+  <script src="libraries/highlighters/highlight.js/highlight.pack.js"></script>
+  <script>hljs.initHighlightingOnLoad();</script>
+  <!-- DONE LOADING HIGHLIGHTER JS FILES -->
+   
+  </html>
